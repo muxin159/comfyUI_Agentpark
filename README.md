@@ -147,11 +147,9 @@ When running for the first time, the extension will automatically create a `conf
 - 在聊天界面中输入文本消息并发送
 - 
   Enter text messages in the chat interface and send them
-- 支持上传图片进行处理
-- 
-  Support uploading images for processing
+  
 - AI 会根据您的输入生成响应
-- 
+  
   AI will generate responses based on your input
 
 ### 图像处理 | Image Processing
