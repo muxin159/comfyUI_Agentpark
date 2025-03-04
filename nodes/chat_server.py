@@ -76,7 +76,7 @@ async def chat(request: ChatRequest):
             api_url,
             json=payload,
             headers=headers,
-            timeout=(5, 15)  # 连接超时5秒，读取超时15秒
+            timeout=(10, 25)  # 连接超时5秒，读取超时15秒
         )
         response_data = response.json()
 
