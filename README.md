@@ -6,6 +6,8 @@ ComfyUI_Agentpark 是一个为 ComfyUI 开发的自定义节点扩展，提供�
 
 ComfyUI_Agentpark is a custom node extension developed for ComfyUI, providing chat interface and image processing capabilities. It allows users to interact with ComfyUI through chat and supports sending and receiving images. This extension aims to enhance the user experience of ComfyUI, making it more intuitive and user-friendly.
 
+
+
 ## 功能特点 | Features
 
 - **聊天界面**：提供直观的聊天界面，支持文本消息的发送和接收
