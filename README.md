@@ -76,7 +76,7 @@ ComfyUI_Agentpark is a custom node extension developed for ComfyUI, providing ch
 
 ```bash
 cd ComfyUI/custom_nodes
-git clone https://github.com/你的用户名/comfyUI_Agentpark.git
+git clone https://github.com/muxin159/comfyUI_Agentpark.git
 ```
 
 2. 安装依赖：
