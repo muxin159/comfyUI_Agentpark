@@ -90,7 +90,7 @@ pip install -r requirements.txt
 
 or if you use portable (run this in ComfyUI_windows_portable -folder):
 
-python_embeded\python.exe -m pip install -r ComfyUI\custom_nodesComfyUI_Agentpark\requirements.txt
+python_embeded\python.exe -m pip install -r ComfyUI\custom_nodes\ComfyUI_Agentpark\requirements.txt
 
 
 ## 配置说明 | Configuration
