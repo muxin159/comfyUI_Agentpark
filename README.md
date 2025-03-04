@@ -224,31 +224,7 @@ These servers run in the background and are automatically restarted by monitorin
 
 Log files are stored in the `logs` directory. You can view these logs to get detailed error information and debugging help.
 
-## 贡献指南 | Contribution Guidelines
 
-欢迎贡献代码、报告问题或提出改进建议。请遵循以下步骤：
-
-Contributions of code, issue reports, or improvement suggestions are welcome. Please follow these steps:
-
-1. Fork 本仓库
-
-   Fork this repository
-   
-2. 创建您的特性分支 (`git checkout -b feature/amazing-feature`)
- 
-   Create your feature branch (`git checkout -b feature/amazing-feature`)
-   
-4. 提交您的更改 (`git commit -m 'Add some amazing feature'`)
-   
-   Commit your changes (`git commit -m 'Add some amazing feature'`)
-   
-5. 推送到分支 (`git push origin feature/amazing-feature`)
-
-   Push to the branch (`git push origin feature/amazing-feature`)
-   
-6. 开启一个 Pull Request
-   
-   Open a Pull Request
 
 ## 许可证 | License
 
