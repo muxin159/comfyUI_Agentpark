@@ -84,13 +84,14 @@ git clone https://github.com/muxin159/comfyUI_Agentpark.git
    Install dependencies:
 
 ```bash
-cd comfyUI_Agentpark
 pip install -r requirements.txt
-```
 
-3. 重启 ComfyUI
-   
-   Restart ComfyUI
+或者如果您使用便携式版本（在 ComfyUI_windows_portable 文件夹中运行）：
+
+or if you use portable (run this in ComfyUI_windows_portable -folder):
+
+python_embeded\python.exe -m pip install -r ComfyUI\custom_nodesComfyUI_Agentpark\requirements.txt
+
 
 ## 配置说明 | Configuration
 
