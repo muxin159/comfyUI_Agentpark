@@ -35,6 +35,25 @@ ComfyUI_Agentpark is a custom node extension developed for ComfyUI, providing ch
 - **日志记录**：完善的日志记录系统，便于调试和问题排查
 - 
   **Logging**: Comprehensive logging system for debugging and troubleshooting
+
+  ## 即将推出 | Coming Soon
+
+  - 输出文本 markdown 格式渲染
+    
+  - Markdown format rendering for output text
+    
+  - 聊天框图片文件上传
+ 
+  - Image file upload in chat box
+    
+  - 聊天框其他文件上传
+ 
+  - Other file uploads in chat box
+ 
+    
+  - 文本输入框文本翻译
+
+  -Text translation in the text input box
   
 
 ## 安装说明 | Installation Guide
