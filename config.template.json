@@ -1,7 +1,0 @@
-{
-  "api": {
-    "url": "https://api.siliconflow.cn/v1/chat/completions",
-    "key": "<your-api-key>",
-    "model": "deepseek-ai/DeepSeek-V3"
-  }
-}
