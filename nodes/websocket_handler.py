@@ -1,6 +1,5 @@
 import json
 import os
-import requests
 import traceback
 import uuid
 from server import PromptServer
@@ -29,316 +28,214 @@ class WebSocketHandler:
             with self._lock:
                 if not self.initialized:
                     self.load_config()
-                    self.register_handlers()  # 注册处理器
+                    self._config_listeners = []
+                    self.register_handlers()
                     self.initialized = True
     
     def load_config(self):
-        """加载配置文件，若不存在则从模板创建，并验证配置有效性"""
-        try:
-            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
-            template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.template.json')
-            if not os.path.exists(config_path) and os.path.exists(template_path):
-                import shutil
-                shutil.copy2(template_path, config_path)
-                logger.info("已创建配置文件 config.json，请在其中填写您的配置信息")
-            
-            if os.path.exists(config_path):
+        config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
+        template_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.template.json')
+        
+        if not os.path.exists(config_path) and os.path.exists(template_path):
+            import shutil
+            shutil.copy2(template_path, config_path)
+            logger.info("已创建配置文件 config.json，请在其中填写您的配置信息")
+
+        if os.path.exists(config_path):
+            try:
                 with open(config_path, 'r', encoding='utf-8') as f:
-                    config = json.load(f)
-                    self.api_url = config['api'].get('url', 'https://api.siliconflow.cn/v1/chat/completions')
-                    self.api_key = config['api'].get('key', '<token>')
-                    self.model = config['api'].get('model', 'deepseek-ai/DeepSeek-V3')
-                
-                if self.api_key == '<token>' or not self.api_key:
-                    logger.warning("API 密钥未配置，使用默认值可能导致请求失败")
-                if not self.api_url.startswith('http'):
-                    logger.warning(f"API URL 无效: {self.api_url}，请检查配置文件")
-            else:
-                logger.warning("找不到配置文件 config.json，使用默认配置")
-                self.api_url = "https://api.siliconflow.cn/v1/chat/completions"
-                self.api_key = "<token>"
-                self.model = "deepseek-ai/DeepSeek-V3"
-        except Exception as e:
-            logger.error(f"加载配置文件时出错: {str(e)}")
-            logger.error(traceback.format_exc())
-            self.api_url = "https://api.siliconflow.cn/v1/chat/completions"
-            self.api_key = "<token>"
-            self.model = "deepseek-ai/DeepSeek-V3"
-    
-    def register_handlers(self):
-        """注册 WebSocket 消息处理器，统一处理所有消息"""
-        try:
-            logger.info("[WebSocketHandler] 开始注册 WebSocket 消息处理器")
+                    content = f.read().strip()
+                    if not content:
+                        logger.warning("config.json 文件为空，使用默认配置")
+                        self.datasets = []
+                        self.selected_model = ''
+                    else:
+                        config = json.loads(content)
+                        self.datasets = config.get('datasets', [])
+                        self.selected_model = config.get('selected_model', '')
+                        if self.datasets and not self.selected_model:
+                            self.selected_model = self.datasets[0]['model']
+            except json.JSONDecodeError as e:
+                logger.error(f"解析 config.json 失败: {str(e)}，使用默认配置")
+                self.datasets = []
+                self.selected_model = ''
+            except Exception as e:
+                logger.error(f"读取 config.json 失败: {str(e)}，使用默认配置")
+                self.datasets = []
+                self.selected_model = ''
+        else:
+            logger.warning("找不到配置文件 config.json，使用默认配置")
+            self.datasets = []
+            self.selected_model = ''
 
-            async def custom_websocket_handler(request):
-                ws = web.WebSocketResponse()
-                await ws.prepare(request)
-                sid = request.rel_url.query.get('clientId', '') or str(uuid.uuid4().hex)
-                PromptServer.instance.sockets[sid] = ws
+    def register_config_listener(self, listener):
+        if callable(listener) and listener not in self._config_listeners:
+            self._config_listeners.append(listener)
+            logger.info("已注册配置更新监听器")
 
-                try:
-                    await PromptServer.instance.send("status", {"status": PromptServer.instance.get_queue_info(), 'sid': sid}, sid)
-                    if PromptServer.instance.client_id == sid and PromptServer.instance.last_node_id is not None:
-                        await PromptServer.instance.send("executing", {"node": PromptServer.instance.last_node_id}, sid)
-
-                    async for msg in ws:
-                        if msg.type == WSMsgType.TEXT:
-                            try:
-                                data = json.loads(msg.data)
-                                message_type = data.get('type')
-                                logger.debug(f"[WebSocketHandler] 接收到消息类型: {message_type}")
-                                
-                                if message_type == "mx-chat-message":
-                                    await self.handle_chat_message(data, sid)
-                                elif message_type == "update_config":
-                                    await self.handle_config_update(data, sid)
-                                elif message_type == "imageData":
-                                    await self.handle_imageData(data, sid)
-                                elif message_type == "log":
-                                    logger.info(f"[WebSocketHandler] 前端日志: {data.get('message', 'No message')}")
-                            except Exception as e:
-                                logger.error(f"[WebSocketHandler] 处理消息失败: {str(e)}")
-                                logger.error(traceback.format_exc())
-                        elif msg.type == WSMsgType.ERROR:
-                            logger.warning(f"[WebSocketHandler] WebSocket 连接关闭，异常: {ws.exception()}")
-                finally:
-                    PromptServer.instance.sockets.pop(sid, None)
-                return ws
-
-            PromptServer.instance.routes.get('/ws')(custom_websocket_handler)
-            logger.info("[WebSocketHandler] WebSocket 消息处理器注册完成")
-        except Exception as e:
-            logger.error(f"[WebSocketHandler] 注册 WebSocket 消息处理器失败: {str(e)}")
-            logger.error(traceback.format_exc())
-            raise e
-    
-    async def _process_image_data(self, imageData, text, sid):
-        """统一处理图片数据的内部方法"""
-        if not imageData:
-            logger.error("[WebSocketHandler] 图片数据为空")
-            return {
-                "success": False,
-                "error": "空图片数据",
-                "processed_data": None
-            }
-        
-        # 处理 base64 前缀
-        if 'base64,' in imageData:
-            imageData = imageData.split('base64,')[1]
-            logger.info("[WebSocketHandler] 已去除 base64 前缀")
-        
-        with self._lock:
-            result = self.image_node.handle_imageData({
-                "imageData": imageData,
-                "text": text,
-                "mode": "agent"
-            })
-        
-        if not result.get('success'):
-            error_msg = result.get('error', '未知错误')
-            logger.error(f"[WebSocketHandler] 图片处理失败: {error_msg}")
-            return {
-                "success": False,
-                "error": error_msg,
-                "processed_data": None
-            }
-        
-        logger.info("[WebSocketHandler] 图片数据处理成功")
-        # 确保只返回处理后的文件名，不使用原始imageData作为默认值
-        if 'processed_data' not in result:
-            logger.error("[WebSocketHandler] 图片处理成功但未返回processed_data字段")
-            return {
-                "success": False,
-                "error": "处理成功但未返回文件名",
-                "processed_data": None
-            }
-        
-        return {
-            "success": True,
-            "error": None,
-            "processed_data": result['processed_data']
-        }
-    
-    async def handle_chat_message(self, data, sid):
-        logger.info("[WebSocketHandler] 开始处理聊天消息")
-        try:
-            user_message = data.get('text', '')
-            mode = data.get('mode', 'agent')
-            imageData = data.get('imageData', '')
-
-            logger.info(f"[WebSocketHandler] 处理模式: {mode}, 用户消息: {user_message}")
-            logger.debug(f"[WebSocketHandler] 图片数据长度: {len(imageData) if imageData else 0}")
-
-            if mode == 'chat':
-                ai_response = self.generate_response(user_message)
-                await PromptServer.instance.send("mx-chat-message", {
-                    "text": ai_response,
-                    "isUser": False,
-                    "sender": "牧小新",
-                    "mode": "chat"
-                }, sid)
-                logger.debug("[WebSocketHandler] 已成功推送 chat 模式消息到前端")
-            elif mode == 'agent':
-                # 发送用户消息到前端
-                message_data = {
-                    "text": user_message,
-                    "isUser": True,
-                    "sender": "comfy大魔导师",
-                    "mode": "agent"
-                }
-                
-                # 处理图片数据
-                if imageData:
-                    logger.info(f"[WebSocketHandler] 收到图片数据，长度: {len(imageData)}")
-                    result = await self._process_image_data(imageData, user_message, sid)
-                    
-                    if not result['success']:
-                        await PromptServer.instance.send("mx-chat-message", {
-                            "text": f"图片处理失败: {result['error']}",
-                            "isUser": False,
-                            "sender": "牧小新",
-                            "mode": "agent"
-                        }, sid)
-                        return
-                    
-                    message_data["imageData"] = result['processed_data']
-                else:
-                    logger.warning("[WebSocketHandler] 未收到图片数据")
-                
-                await PromptServer.instance.send("mx-chat-message", message_data, sid)
-                logger.debug("[WebSocketHandler] 已成功推送 agent 模式消息到前端")
-        except Exception as e:
-            error_msg = f"处理聊天消息时出错: {str(e)}"
-            logger.error(f"[WebSocketHandler] {error_msg}")
-            logger.error(traceback.format_exc())
-            await PromptServer.instance.send("mx-chat-message", {
-                "text": "处理消息失败，请稍后再试。",
-                "isUser": False,
-                "sender": "牧小新"
-            }, sid)
-    
     async def handle_config_update(self, data, sid):
         logger.debug("[WebSocketHandler] 处理配置更新")
         try:
             config = data.get('config', {})
-            if 'model_name' in config:
-                self.model = config['model_name']
-            if 'url' in config:
-                self.api_url = config['url']
-            if 'api_key' in config:
-                self.api_key = config['api_key']
-            
+            logger.info(f"收到前端配置数据: {json.dumps(config, ensure_ascii=False)}")
+            new_config = {
+                "datasets": config.get('datasets', self.datasets),
+                "selected_model": config.get('selected_model', self.selected_model)
+            }
+            self.datasets = new_config['datasets']
+            self.selected_model = new_config['selected_model']
+
             config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
-            if os.path.exists(config_path):
+            logger.info(f"尝试写入配置文件: {config_path}")
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(new_config, f, indent=4, ensure_ascii=False)
+            logger.info("[WebSocketHandler] 配置已保存到 config.json")
+
+            selected_config = next((d for d in self.datasets if d['model'] == self.selected_model), None)
+            for listener in self._config_listeners:
+                listener(selected_config if selected_config else {})
+            
+            await PromptServer.instance.send_json(
+                event="config_updated",
+                data={"success": True, "config": new_config},
+                sid=sid  # 使用 sid 而不是 client_id
+            )
+            logger.info(f"已发送 config_updated 响应给 sid: {sid}")
+            return True
+        except Exception as e:
+            logger.error(f"[WebSocketHandler] 更新配置失败: {str(e)}")
+            logger.error(traceback.format_exc())
+            await PromptServer.instance.send_json(
+                event="config_updated",
+                data={"success": False, "error": str(e)},
+                sid=sid  # 使用 sid 而不是 client_id
+            )
+            logger.info(f"已发送错误响应给 sid: {sid}")
+            return False
+
+    async def handle_select_config(self, data, sid):
+        logger.debug("[WebSocketHandler] 处理配置选择")
+        try:
+            config = data.get('config', {})
+            selected_model = config.get('selected_model')
+            if selected_model and any(d['model'] == selected_model for d in self.datasets):
+                self.selected_model = selected_model
+                config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.json')
                 with open(config_path, 'r', encoding='utf-8') as f:
                     current_config = json.load(f)
-                current_config['api']['key'] = self.api_key
-                current_config['api']['url'] = self.api_url
-                current_config['api']['model'] = self.model
+                current_config['selected_model'] = selected_model
                 with open(config_path, 'w', encoding='utf-8') as f:
                     json.dump(current_config, f, indent=4, ensure_ascii=False)
-                await PromptServer.instance.send("mx-chat-message", {
-                    "text": "配置已更新",
-                    "isUser": False,
-                    "sender": "牧小新"
-                }, sid)
+                selected_config = next((d for d in self.datasets if d['model'] == self.selected_model), None)
+                for listener in self._config_listeners:
+                    listener(selected_config if selected_config else {})
+                logger.info(f"[WebSocketHandler] 已应用模型: {selected_model}")
+                await PromptServer.instance.send_json(
+                    event="config_updated",
+                    data={"success": True, "selected_model": selected_model},
+                    sid=sid  # 使用 sid 而不是 client_id
+                )
+                logger.info(f"已发送 config_updated 响应给 sid: {sid}")
             else:
-                logger.warning("[WebSocketHandler] config.json 不存在，无法保存配置")
-                await PromptServer.instance.send("mx-chat-message", {
-                    "text": "配置文件不存在，更新失败",
-                    "isUser": False,
-                    "sender": "牧小新"
-                }, sid)
+                logger.warning(f"[WebSocketHandler] 无效的模型选择: {selected_model}")
+                await PromptServer.instance.send_json(
+                    event="config_updated",
+                    data={"success": False, "error": "无效的模型选择"},
+                    sid=sid  # 使用 sid 而不是 client_id
+                )
+                logger.info(f"已发送错误响应给 sid: {sid}")
         except Exception as e:
-            error_msg = f"更新配置时出错: {str(e)}"
-            logger.error(f"[WebSocketHandler] {error_msg}")
+            logger.error(f"[WebSocketHandler] 选择配置失败: {str(e)}")
             logger.error(traceback.format_exc())
-            await PromptServer.instance.send("mx-chat-message", {
-                "text": f"更新配置失败: {str(e)}",
-                "isUser": False,
-                "sender": "牧小新"
-            }, sid)
-    
-    async def handle_imageData(self, data, sid):
-        logger.info("[WebSocketHandler] 开始处理图片数据")
-        try:
-            imageData = data.get('imageData', '')
-            text = data.get('text', '用户上传了一张图片')
-            
-            result = await self._process_image_data(imageData, text, sid)
-            
-            if result['success']:
-                await PromptServer.instance.send("imageData_ack", {"success": True}, sid)
-                await PromptServer.instance.send("mx-chat-message", {
-                    "text": text,
-                    "isUser": True,
-                    "imageData": result['processed_data'],
-                    "mode": "agent"
-                }, sid)
-            else:
-                await PromptServer.instance.send("imageData_ack", {"success": False, "error": result['error']}, sid)
-                await PromptServer.instance.send("mx-chat-message", {
-                    "text": f"图片处理失败: {result['error']}",
-                    "isUser": False,
-                    "sender": "牧小新",
-                    "mode": "agent"
-                }, sid)
-        except Exception as e:
-            error_msg = str(e)
-            logger.error(f"[WebSocketHandler] 处理图片数据时出错: {error_msg}")
-            logger.error(traceback.format_exc())
-            await PromptServer.instance.send("imageData_ack", {"success": False, "error": error_msg}, sid)
-            await PromptServer.instance.send("mx-chat-message", {
-                "text": f"处理图片数据时出错: {error_msg}",
-                "isUser": False,
-                "sender": "牧小新",
-                "mode": "agent"
-            }, sid)
-    
-    def generate_response(self, user_message):
-        logger.debug(f"[WebSocketHandler] 为用户消息生成响应: {user_message}")
-        try:
-            payload = {
-                "model": self.model,
-                "messages": [{"role": "user", "content": user_message}],
-                "stream": False,
-                "max_tokens": 512,
-                "stop": ["null"],
-                "temperature": 0.7,
-                "top_p": 0.7,
-                "top_k": 50,
-                "frequency_penalty": 0.5,
-                "n": 1,
-                "response_format": {"type": "text"}
-            }
-            headers = {
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            }
-            logger.debug(f"[WebSocketHandler] API 请求: URL={self.api_url}")
-            response = requests.post(self.api_url, json=payload, headers=headers, timeout=10)
-            response.raise_for_status()
-            response_data = response.json()
-            logger.debug(f"[WebSocketHandler] API 响应状态码: {response.status_code}")
-            return response_data["choices"][0]["message"]["content"]
-        except requests.exceptions.Timeout:
-            logger.error("[WebSocketHandler] API 请求超时")
-            return "API 请求超时，请检查网络连接或稍后重试。"
-        except requests.exceptions.ConnectionError:
-            logger.error("[WebSocketHandler] API 连接错误")
-            return "无法连接到 API 服务器，请检查网络连接或 API 地址是否正确。"
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"[WebSocketHandler] API 请求失败: {str(e)}")
-            if response.status_code == 401:
-                return "API 密钥验证失败，请检查配置文件中的 API 密钥是否正确。"
-            elif response.status_code == 404:
-                return "API 接口地址不正确，请检查配置文件中的 URL 设置。"
-            elif response.status_code >= 500:
-                return "API 服务器内部错误，请稍后重试。"
-            return f"API 请求失败: {str(e)}"
-        except Exception as e:
-            logger.error(f"[WebSocketHandler] 生成回复时出错: {str(e)}")
-            logger.error(traceback.format_exc())
-            return "抱歉，我现在无法正常回复，请稍后再试。"
+            await PromptServer.instance.send_json(
+                event="config_updated",
+                data={"success": False, "error": str(e)},
+                sid=sid  # 使用 sid 而不是 client_id
+            )
+            logger.info(f"已发送错误响应给 sid: {sid}")
+
+    def register_handlers(self):
+        PromptServer.instance.routes._items = [r for r in PromptServer.instance.routes._items if r.path != '/ws']
+
+        async def custom_websocket_handler(request):
+            ws = web.WebSocketResponse()
+            await ws.prepare(request)
+            sid = request.rel_url.query.get('clientId', '') or str(uuid.uuid4().hex)
+            PromptServer.instance.sockets[sid] = ws
+            logger.info(f"WebSocket 连接建立，sid: {sid}")
+
+            try:
+                await PromptServer.instance.send_json(
+                    event="status",
+                    data={"status": PromptServer.instance.get_queue_info(), "sid": sid},
+                    sid=sid
+                )
+                if PromptServer.instance.client_id == sid and PromptServer.instance.last_node_id is not None:
+                    await PromptServer.instance.send_json(
+                        event="executing",
+                        data={"node": PromptServer.instance.last_node_id},
+                        sid=sid
+                    )
+                
+                # 发送当前配置信息到前端
+                current_config = {
+                    "datasets": self.datasets,
+                    "selected_model": self.selected_model
+                }
+                logger.info(f"发送当前配置信息到前端: {json.dumps(current_config, ensure_ascii=False)}")
+                await PromptServer.instance.send_json(
+                    event="config_updated",
+                    data={"success": True, "config": current_config},
+                    sid=sid
+                )
+
+                async for msg in ws:
+                    if msg.type == WSMsgType.TEXT:
+                        try:
+                            data = json.loads(msg.data)
+                            logger.info(f"收到前端消息: {json.dumps(data, ensure_ascii=False)}")
+                            message_type = data.get('type')
+                            logger.debug(f"[WebSocketHandler] 接收到消息类型: {message_type}")
+                            
+                            if message_type == "update_config":
+                                await self.handle_config_update(data, sid)
+                            elif message_type == "select_config":
+                                await self.handle_select_config(data, sid)
+                            elif message_type == "get_initial_config":
+                                # 处理获取初始配置请求
+                                logger.info(f"[WebSocketHandler] 处理获取初始配置请求")
+                                current_config = {
+                                    "datasets": self.datasets,
+                                    "selected_model": self.selected_model
+                                }
+                                logger.info(f"发送初始配置信息到前端: {json.dumps(current_config, ensure_ascii=False)}")
+                                await PromptServer.instance.send_json(
+                                    event="config_updated",
+                                    data={"success": True, "config": current_config},
+                                    sid=sid
+                                )
+                            elif message_type == "mode_change":
+                                mode = data.get('mode', '未知')
+                                logger.info(f"[WebSocketHandler] 模式切换到: {mode}")
+                                await PromptServer.instance.send_json(
+                                    event="mode_changed",
+                                    data={"mode": mode},
+                                    sid=sid
+                                )
+                            elif message_type == "log":
+                                logger.info(f"[WebSocketHandler] 前端日志: {data.get('message', 'No message')}")
+                            else:
+                                logger.warning(f"未处理的消息类型: {message_type}")
+                        except Exception as e:
+                            logger.error(f"[WebSocketHandler] 处理消息失败: {str(e)}")
+                            logger.error(traceback.format_exc())
+                    elif msg.type == WSMsgType.ERROR:
+                        logger.warning(f"WebSocket 连接关闭，异常: {ws.exception()}")
+            finally:
+                PromptServer.instance.sockets.pop(sid, None)
+            return ws
+
+        PromptServer.instance.routes.get('/ws')(custom_websocket_handler)
+        logger.info("[WebSocketHandler] WebSocket 消息处理器注册完成")
 
 websocket_handler = WebSocketHandler()

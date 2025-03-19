@@ -1,3 +1,4 @@
+import re
 from server import PromptServer
 from .logger import MXLogger
 
@@ -59,14 +60,31 @@ class MXChatReceiveNode:
         # 检查消息是否为空，只有非空消息才会被发送
         if message:
             try:
-                # 使用PromptServer的send_sync方法发送消息到前端
-                PromptServer.instance.send_sync("mx-chat-message", {
+                # 检查消息是否包含markdown元素
+                has_markdown = any([
+                    bool(re.search(r'```[\s\S]*?```', message)),  # 代码块
+                    bool(re.search(r'\|[^|]+\|[^|]+\|', message)),  # 表格（至少两列）
+                    bool(re.search(r'^[-*_]{3,}$', message, re.MULTILINE)),  # 分隔线
+                    bool(re.search(r'^#{1,6}\s+\S+', message, re.MULTILINE)),  # 标题
+                    bool(re.search(r'\*\*[^*]+\*\*|__[^_]+__', message)),  # 加粗
+                    bool(re.search(r'\*[^*]+\*|_[^_]+_', message)),  # 斜体
+                    bool(re.search(r'\[([^\]]+)\]\(([^)]+)\)', message))  # 链接
+                ])
+
+                # 准备消息数据
+                message_data = {
                     "text": message,
                     "isUser": False,
                     "sender": "牧小新",
-                    "mode": "agent",
-                    "format": "markdown"
-                })
+                    "mode": "agent"
+                }
+
+                # 只在检测到markdown元素时添加format字段
+                if has_markdown:
+                    message_data["format"] = "markdown"
+
+                # 使用PromptServer的send_sync方法同步发送消息到前端
+                PromptServer.instance.send_sync("mx-chat-message", message_data)
                 logger.debug(f"消息已发送到前端: {message}")
             except Exception as e:
                 error_msg = f"发送消息到前端失败: {str(e)}"

@@ -1,62 +1,104 @@
-import requests
+import os
 import json
+from openai import OpenAI
+from collections import defaultdict
 
-# 从配置文件中加载 API 配置
-def load_config(config_file="config.json"):
-    try:
-        with open(config_file, "r") as f:
-            config = json.load(f)
-        return config["api"]
-    except Exception as e:
-        print(f"加载配置文件失败: {str(e)}")
-        return None
+# 配置管理类
+class ConfigManager:
+    def __init__(self, config_path="config.json"):
+        self.config_path = os.path.join(os.path.dirname(__file__), config_path)
+        self.api_key: str = ''
+        self.api_url: str = ''
+        self.model: str = ''
+        self.datasets: list = []
+        self.selected_model: str = ''
+        self.load_config()
 
-# 加载配置
-config = load_config()
-if not config:
-    print("无法加载配置，请检查配置文件。")
-    exit(1)
-
-# API 配置
-api_url = config["url"]
-api_key = config["key"]
-model = config["model"]
-
-# 请求头
-headers = {
-    "Authorization": f"Bearer {api_key}",
-    "Content-Type": "application/json"
-}
-
-# 请求体
-payload = {
-    "model": model,
-    "messages": [{"role": "user", "content": "你好，介绍一下你自己"}],
-    "stream": False,
-    "max_tokens": 512,
-    "temperature": 0.7,
-    "top_p": 0.7,
-    "top_k": 50,
-    "frequency_penalty": 0.5,
-    "n": 1,
-    "response_format": {"type": "text"}
-}
-
-# 发送 POST 请求
-try:
-    response = requests.post(api_url, json=payload, headers=headers)
-    print(f"状态码: {response.status_code}")
-    print(f"响应内容: {response.text}")
-
-    # 检查请求是否成功
-    if response.status_code == 200:
-        response_data = response.json()
-        if "choices" in response_data:
-            ai_response = response_data["choices"][0]["message"]["content"]
-            print("AI 回复:", ai_response)
+    def load_config(self):
+        if os.path.exists(self.config_path):
+            with open(self.config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                self.datasets = config.get('datasets', [])
+                self.selected_model = config.get('selected_model', '')
+                selected = next((d for d in self.datasets if d['model'] == self.selected_model), None)
+                if selected:
+                    self.api_key = selected.get('api_key', '')
+                    self.api_url = selected.get('url', '')
+                    self.model = selected.get('model', '')
+            print(f"加载配置成功: model={self.model}, url={self.api_url}")
         else:
-            print("API 返回数据格式异常:", response.text)
-    else:
-        print(f"请求失败，状态码: {response.status_code}, 错误信息: {response.text}")
-except requests.exceptions.RequestException as e:
-    print(f"请求出错: {str(e)}")
+            print("配置文件不存在")
+
+# 对话历史
+conversation_history = defaultdict(list)
+
+def stream_chat_response(user_message: str, client_id: str = "default", config_manager=None, override_model=None):
+    if not config_manager.api_url or not config_manager.api_key:
+        print("未配置有效的 API URL 或 API Key")
+        return
+
+    # 初始化 OpenAI 客户端
+    client = OpenAI(
+        base_url=config_manager.api_url,
+        api_key=config_manager.api_key
+    )
+
+    # 使用 override_model 如果提供了，否则用配置文件中的模型
+    model_to_use = override_model if override_model else config_manager.model
+
+    # 管理对话历史
+    history = conversation_history[client_id]
+    history.append({"role": "user", "content": user_message})
+    if len(history) > 10:
+        history = history[-10:]
+    conversation_history[client_id] = history
+
+    print(f"发送流式请求到LLM API，用户消息: {user_message}, clientId: {client_id}, 模型: {model_to_use}")
+
+    try:
+        # 发送带有流式输出的请求
+        response = client.chat.completions.create(
+            model=model_to_use,
+            messages=history,
+            stream=True,
+            max_tokens=4000,
+            temperature=0.7,
+            top_p=0.7
+        )
+
+        assistant_response = ""
+        for chunk in response:
+            content = chunk.choices[0].delta.content
+            if content is not None:  # 检查 content 是否为空
+                assistant_response += content
+                print(content, end='', flush=True)
+        
+        print("\n流式响应结束")
+        if assistant_response:
+            conversation_history[client_id].append({"role": "assistant", "content": assistant_response})
+            if len(conversation_history[client_id]) > 10:
+                conversation_history[client_id] = conversation_history[client_id][-10:]
+
+    except Exception as e:
+        print(f"流式请求失败: {str(e)}")
+
+def test_api_call():
+    config_manager = ConfigManager()
+    user_message = "你好，请介绍一下自己。"
+    client_id = "test_client_1"
+    
+    print("\n开始测试 API 调用...\n")
+    
+    # 测试已知的有效模型
+    print("测试 deepseek-ai/DeepSeek-R1-Distill-Qwen-32B:")
+    stream_chat_response(user_message, client_id, config_manager, override_model="deepseek-ai/DeepSeek-R1-Distill-Qwen-32B")
+    
+    print("\n测试 deepseek-ai/DeepSeek-V3:")
+    stream_chat_response(user_message, client_id, config_manager, override_model="deepseek-ai/DeepSeek-V3")
+    
+    # 尝试其他可能的模型名称
+    print("\n测试 DeepSeek-V3:")
+    stream_chat_response(user_message, client_id, config_manager, override_model="DeepSeek-V3")
+
+if __name__ == "__main__":
+    test_api_call()
