@@ -1,4 +1,0 @@
-[2025-03-04 04:27:43] INFO [MXChat.info:53] [WebSocketHandler] 开始注册 WebSocket 消息处理器
-[2025-03-04 04:27:43] INFO [MXChat.info:53] [WebSocketHandler] WebSocket 消息处理器注册完成
-[2025-03-04 04:27:43] INFO [MXChat.info:53] 成功启动服务器 server.py 在端口 8000
-[2025-03-04 04:27:43] INFO [MXChat.info:53] 成功启动服务器 nodes/chat_server.py 在端口 8001
