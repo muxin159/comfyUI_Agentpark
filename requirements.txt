@@ -10,3 +10,6 @@ pydantic>=2.6.1
 openai-whisper>=20231117
 opencc-python-reimplemented>=0.1.7
 marked>=0.9.0
+pandas
+openai
+watchdog
