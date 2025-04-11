@@ -399,6 +399,10 @@ styleElement.textContent = `
         margin-top: 8px;
         width: 100%;
     }
+    .mx-chat-message.user .mx-chat-image-container,
+    .mx-chat-message.user .mx-chat-video-container {
+        justify-items: end;
+    }
     .mx-chat-image img {
         width: 100%;
         max-width: 150px;
@@ -461,6 +465,9 @@ styleElement.textContent = `
         gap: 8px;
         margin-top: 8px;
         width: 100%;
+    }
+    .mx-chat-message.user .mx-chat-audio-container {
+        justify-items: end;
     }
     .mx-chat-audio audio {
         max-width: 300px;
