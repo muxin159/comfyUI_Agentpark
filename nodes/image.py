@@ -31,7 +31,7 @@ class MXChatImageReceiveNode:
     RETURN_TYPES = ("IMAGE", "MASK")
     FUNCTION = "execute"
     OUTPUT_NODE = True
-    CATEGORY = "Agentpark"
+    CATEGORY = "Agentpark/ReceiveNode"
 
     def execute(self, image):
         try:

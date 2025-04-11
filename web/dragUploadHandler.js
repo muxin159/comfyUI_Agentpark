@@ -29,22 +29,41 @@ export class DragUploadHandler {
     handleFileDrop(e) {
         const files = e.dataTransfer.files;
         if (files.length > 0) {
-            // 处理所有拖拽上传的文件
             Array.from(files).forEach(file => this.processFile(file));
+        } else {
+            // 处理从预览区域拖拽的媒体元素
+            try {
+                const dataStr = e.dataTransfer.getData('text/plain');
+                if (dataStr) {
+                    const data = JSON.parse(dataStr);
+                    if (data.type && data.data) {
+                        // 创建一个新的File对象
+                        const byteString = atob(data.data);
+                        const ab = new ArrayBuffer(byteString.length);
+                        const ia = new Uint8Array(ab);
+                        for (let i = 0; i < byteString.length; i++) {
+                            ia[i] = byteString.charCodeAt(i);
+                        }
+                        const blob = new Blob([ab], { type: data.type });
+                        const file = new File([blob], data.name || 'dragged-file', { type: data.type });
+                        this.processFile(file);
+                    }
+                }
+            } catch (error) {
+                console.error('处理拖拽数据时出错:', error);
+            }
         }
     }
 
-    handleFileInput(e) {  // 修改参数为事件对象
+    handleFileInput(e) {
         const input = e.target;
         const files = input.files;
         if (files?.length) {
-            // 处理文件并清空输入框值（允许重复选择相同文件）
             Array.from(files).forEach(file => this.processFile(file));
-            input.value = null;  // 新增关键代码
+            input.value = null;
         }
     }
 
-    // 根据文件类型获取对应的 location_name
     getLocationNames(fileType) {
         if (!app || !app.graph || !app.graph._nodes) {
             console.warn('无法访问工作流节点，app.graph 未定义');
@@ -79,12 +98,11 @@ export class DragUploadHandler {
             })
             .filter(name => name !== null && name !== undefined);
 
-        return [...new Set(locationNames)]; // 去重
+        return [...new Set(locationNames)];
     }
 
-    // 更新下拉框选项
     updateSelectBox(selectBox, previewContainer, locationNames) {
-        selectBox.innerHTML = ''; // 清空现有选项
+        selectBox.innerHTML = '';
 
         const defaultOption = this.createElement('option');
         defaultOption.value = '';
@@ -108,7 +126,7 @@ export class DragUploadHandler {
                 selectBox.appendChild(option);
             });
             selectBox.disabled = false;
-            previewContainer.dataset.locationName = ''; // 默认不选择任何节点
+            previewContainer.dataset.locationName = '';
         }
     }
 
@@ -128,7 +146,6 @@ export class DragUploadHandler {
                 this.imagePreview.style.display = 'block';
                 const previewContainer = this.createElement('div', 'mx-chat-preview-container');
 
-                // 根据文件类型获取 location_names
                 let locationNames = this.getLocationNames(fileType);
                 const selectBox = this.createElement('select', 'mx-chat-preview-select');
                 this.updateSelectBox(selectBox, previewContainer, locationNames);
@@ -138,7 +155,6 @@ export class DragUploadHandler {
                 });
                 previewContainer.appendChild(selectBox);
 
-                // 监听节点变化，根据文件类型动态更新
                 if (typeof app !== 'undefined' && app.eventBus) {
                     app.eventBus.addEventListener('nodeAdded', (event) => {
                         const node = event.detail || event;
@@ -185,7 +201,6 @@ export class DragUploadHandler {
                     });
                 }
 
-                // 文件预览
                 if (isImage) {
                     const previewImage = this.createElement('img', 'mx-chat-preview-image');
                     previewImage.src = `data:${fileType};base64,${base64Data}`;
@@ -194,6 +209,15 @@ export class DragUploadHandler {
                         maxHeight: '92px',
                         objectFit: 'cover',
                         cursor: 'pointer'
+                    });
+                    previewImage.draggable = true;
+                    previewImage.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.setData('text/plain', JSON.stringify({
+                            type: fileType,
+                            name: file.name,
+                            data: base64Data,
+                            locationName: previewContainer.dataset.locationName
+                        }));
                     });
                     previewImage.addEventListener('click', () => {
                         const modal = this.createElement('div', 'mx-chat-image-modal');
@@ -220,20 +244,39 @@ export class DragUploadHandler {
                     audioPreview.controls = true;
                     audioPreview.src = `data:${fileType};base64,${base64Data}`;
                     audioPreview.style.width = '92px';
+                    audioPreview.draggable = true;
+                    audioPreview.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.setData('text/plain', JSON.stringify({
+                            type: fileType,
+                            name: file.name,
+                            data: base64Data,
+                            locationName: previewContainer.dataset.locationName
+                        }));
+                    });
                     previewContainer.appendChild(audioPreview);
                 } else if (isVideo) {
                     const videoPreview = this.createElement('video', 'mx-chat-preview-video');
-                    videoPreview.controls = true;
-                    videoPreview.src = `data:${fileType};base64,${base64Data}`;
+                    const videoSrc = `data:${fileType};base64,${base64Data}`;
+                    videoPreview.src = videoSrc;
                     Object.assign(videoPreview.style, {
                         maxWidth: '92px',
                         maxHeight: '92px',
-                        objectFit: 'cover'
+                        objectFit: 'cover',
+                        cursor: 'pointer'
                     });
+                    videoPreview.draggable = true;
+                    videoPreview.addEventListener('dragstart', (e) => {
+                        e.dataTransfer.setData('text/plain', JSON.stringify({
+                            type: fileType,
+                            name: file.name,
+                            data: base64Data,
+                            locationName: previewContainer.dataset.locationName
+                        }));
+                    });
+                    videoPreview.addEventListener('click', () => this.showPreviewVideoModal(videoSrc));
                     previewContainer.appendChild(videoPreview);
                 }
 
-                // 删除按钮
                 const deleteButton = this.createElement('button', 'mx-chat-preview-delete');
                 deleteButton.innerHTML = '×';
                 deleteButton.onclick = () => {
@@ -251,9 +294,42 @@ export class DragUploadHandler {
             reader.readAsDataURL(file);
         }
     }
+
+    showPreviewVideoModal(videoSrc) {
+        const modal = this.createElement('div', 'mx-chat-video-modal');
+        const modalContent = this.createElement('div', 'mx-chat-video-modal-content');
+        const video = this.createElement('video');
+        video.src = videoSrc;
+        video.controls = true;
+        video.autoplay = true;
+        modalContent.appendChild(video);
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+
+        setTimeout(() => modal.classList.add('visible'), 0);
+
+        // 点击背景关闭模态
+        const closeModal = () => {
+            modal.classList.remove('visible');
+            setTimeout(() => modal.remove(), 300);
+        };
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+        // 按 Esc 键关闭模态
+        const escListener = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escListener);
+            }
+        };
+        document.addEventListener('keydown', escListener);
+    }
 }
 
-// 内联样式
 const styleElement = document.createElement('style');
 styleElement.textContent = `
     .mx-chat-preview-audio {
@@ -363,6 +439,37 @@ styleElement.textContent = `
         padding: 8px;
         border-radius: 4px;
         background: rgba(0, 0, 0, 0.1);
+    }
+    .mx-chat-video-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 1003;
+    }
+    .mx-chat-video-modal.visible {
+        display: flex;
+    }
+    .mx-chat-video-modal-content {
+        width: 90vw;
+        height: 90vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .mx-chat-video-modal-content video {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+        border-radius: 8px;
+        background: #000;
     }
 `;
 document.head.appendChild(styleElement);

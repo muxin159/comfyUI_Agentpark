@@ -22,7 +22,7 @@ class MXChatAudioSendNode:
     RETURN_TYPES = ("AUDIO",)
     RETURN_NAMES = ("audio",)
     FUNCTION = "execute"
-    CATEGORY = "Agentpark"
+    CATEGORY = "Agentpark/SendNode"
 
     def __init__(self):
         self.location_name = None

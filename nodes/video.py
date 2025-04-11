@@ -28,7 +28,7 @@ class MXChatVideoReceiveNode:
     RETURN_TYPES = ("IMAGE",)
     FUNCTION = "execute"
     OUTPUT_NODE = True
-    CATEGORY = "Agentpark"
+    CATEGORY = "Agentpark/ReceiveNode"
 
     def execute(self, video, audio=None):
         try:

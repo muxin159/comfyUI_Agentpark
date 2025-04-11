@@ -35,7 +35,7 @@ class MXChatTableSendNode:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("message",)
     FUNCTION = "execute"
-    CATEGORY = "Agentpark"
+    CATEGORY = "Agentpark/SendNode"
     OUTPUT_NODE = True  # 标记为输出节点，以便触发前端消息
 
     def execute(self, table_data=None, file_type=None, file_name=None):

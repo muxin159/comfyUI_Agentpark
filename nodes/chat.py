@@ -19,7 +19,7 @@ class MXChatSendNode:
     
     RETURN_TYPES = ("STRING",)
     FUNCTION = "execute"
-    CATEGORY = "Agentpark"
+    CATEGORY = "Agentpark/SendNode"
     
     def execute(self, text):
         # 将用户输入的文本向下传递
@@ -40,7 +40,7 @@ class MXChatReceiveNode:
     RETURN_TYPES = ("STRING",)
     FUNCTION = "execute"
     OUTPUT_NODE = True
-    CATEGORY = "Agentpark"
+    CATEGORY = "Agentpark/ReceiveNode"
 
     def execute(self, text):
         logger.info("开始处理接收到的消息")

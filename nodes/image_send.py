@@ -24,7 +24,7 @@ class MXChatImageSendNode:
     RETURN_NAMES = ("image", "mask")
     FUNCTION = "execute"
     OUTPUT_NODE = True
-    CATEGORY = "Agentpark"
+    CATEGORY = "Agentpark/SendNode"
 
     def __init__(self):
         self.location_name = None

@@ -7,7 +7,7 @@ export class MessageComponent extends MXChatComponent {
         this.isUser = isUser;
         this.imageData = imageData;
         this.audioData = audioData;
-        this.videoData = videoData; // 新增 videoData 参数
+        this.videoData = videoData;
         this.isReasoningVisible = true;
         this.render();
     }
@@ -102,7 +102,28 @@ export class MessageComponent extends MXChatComponent {
                     audio.src = `data:${audioData.fileType};base64,${audioData.audioData}`;
                 } else {
                     console.warn('audioData 格式不正确，无法渲染音频:', audioData);
+                    return;
                 }
+                audio.draggable = true;
+                audio.addEventListener('dragstart', (e) => {
+                    let base64Data = '';
+                    let fileType = 'audio/mpeg';
+                    let fileName = 'audio-file';
+                    
+                    if (audioData?.audioData) {
+                        base64Data = audioData.audioData;
+                        fileType = audioData.fileType || 'audio/mpeg';
+                        fileName = audioData.fileName || 'audio-file';
+                    } else if (typeof audioData === 'string') {
+                        base64Data = audioData;
+                    }
+                    
+                    e.dataTransfer.setData('text/plain', JSON.stringify({
+                        type: fileType,
+                        name: fileName,
+                        data: base64Data
+                    }));
+                });
                 audioWrapper.appendChild(audio);
                 audioContainer.appendChild(audioWrapper);
             });
@@ -115,16 +136,43 @@ export class MessageComponent extends MXChatComponent {
             videos.forEach(vidData => {
                 const videoWrapper = this.createElement('div', 'mx-chat-video');
                 const video = this.createElement('video');
-                video.controls = true;
-                if (vidData && vidData.videoUrl) {
-                    video.src = vidData.videoUrl;
+                let videoSrc;
+                if (vidData?.videoUrl) {
+                    videoSrc = vidData.videoUrl;
                 } else if (typeof vidData === 'string') {
-                    video.src = `data:video/mp4;base64,${vidData}`;
-                } else if (vidData && vidData.fileType && vidData.videoData) {
-                    video.src = `data:${vidData.fileType};base64,${vidData.videoData}`;
+                    videoSrc = `data:video/mp4;base64,${vidData}`;
+                } else if (vidData?.fileType && vidData?.videoData) {
+                    videoSrc = `data:${vidData.fileType};base64,${vidData.videoData}`;
                 } else {
-                    console.warn('videoData 格式不正确，无法渲染视频:', vidData);
+                    console.warn('Invalid videoData format:', vidData);
+                    return;
                 }
+                video.src = videoSrc;
+                video.addEventListener('click', () => this.showVideoModal(videoSrc));
+                video.draggable = true;
+                video.addEventListener('dragstart', (e) => {
+                    let base64Data = '';
+                    let fileType = 'video/mp4';
+                    let fileName = 'video-file';
+                    
+                    if (vidData?.videoData) {
+                        base64Data = vidData.videoData;
+                        fileType = vidData.fileType || 'video/mp4';
+                        fileName = vidData.fileName || 'video-file';
+                    } else if (typeof vidData === 'string') {
+                        base64Data = vidData;
+                    } else if (vidData?.videoUrl) {
+                        // 对于URL类型的视频，不支持直接拖拽
+                        console.warn('URL类型视频不支持拖拽功能');
+                        return;
+                    }
+                    
+                    e.dataTransfer.setData('text/plain', JSON.stringify({
+                        type: fileType,
+                        name: fileName,
+                        data: base64Data
+                    }));
+                });
                 videoWrapper.appendChild(video);
                 videoContainer.appendChild(videoWrapper);
             });
@@ -195,13 +243,47 @@ export class MessageComponent extends MXChatComponent {
         });
     }
 
+    showVideoModal(videoSrc) {
+        const modal = this.createElement('div', 'mx-chat-video-modal');
+        const modalContent = this.createElement('div', 'mx-chat-video-modal-content');
+        const video = this.createElement('video');
+        video.src = videoSrc;
+        video.controls = true;
+        video.autoplay = true;
+        modalContent.appendChild(video);
+        modal.appendChild(modalContent);
+        document.body.appendChild(modal);
+
+        setTimeout(() => modal.classList.add('visible'), 0);
+
+        // 点击背景关闭模态
+        const closeModal = () => {
+            modal.classList.remove('visible');
+            setTimeout(() => modal.remove(), 300);
+        };
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) {
+                closeModal();
+            }
+        });
+
+        // 按 Esc 键关闭模态
+        const escListener = (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+                document.removeEventListener('keydown', escListener);
+            }
+        };
+        document.addEventListener('keydown', escListener);
+    }
+
     toJSON() {
         return {
             message: this.message,
             isUser: this.isUser,
             imageData: this.imageData,
             audioData: this.audioData,
-            videoData: this.videoData, 
+            videoData: this.videoData,
             isReasoningVisible: this.isReasoningVisible
         };
     }
@@ -216,7 +298,6 @@ export class MessageComponent extends MXChatComponent {
     }
 }
 
-// 内联样式
 const styleElement = document.createElement('style');
 styleElement.textContent = `
     .mx-chat-message {
@@ -312,7 +393,7 @@ styleElement.textContent = `
     }
     .mx-chat-image-container, .mx-chat-video-container {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));  
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
         grid-template-columns: 1fr;
         gap: 8px;
         margin-top: 8px;
@@ -392,6 +473,38 @@ styleElement.textContent = `
         height: auto;
         border-radius: 8px;
         object-fit: cover;
+        cursor: pointer;
+    }
+    .mx-chat-video-modal {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.9);
+        display: none;
+        justify-content: center;
+        align-items: center;
+        z-index: 1003;
+    }
+    .mx-chat-video-modal.visible {
+        display: flex;
+    }
+    .mx-chat-video-modal-content {
+        width: 90vw;
+        height: 90vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .mx-chat-video-modal-content video {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+        border-radius: 8px;
+        background: #000;
     }
 `;
 document.head.appendChild(styleElement);

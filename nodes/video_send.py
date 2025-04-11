@@ -23,6 +23,10 @@ class MXChatVideoSendNode:
             },
             "optional": {
                 "text": ("STRING", {"default": "", "hidden": True}),
+                "max_frames": ("INT", {"default": 0, "min": 0, "max": 10000, "step": 1, "display": "加载帧数上限 (0=全部)"}),
+                "skip_frames": ("INT", {"default": 0, "min": 0, "max": 100, "step": 1, "display": "每隔X帧取一帧 (0=不跳帧)"}),
+                "skip_first_frames": ("INT", {"default": 0, "min": 0, "max": 1000, "step": 1, "display": "跳过前X帧 (0=不跳过)"}),
+                "force_fps": ("INT", {"default": 0, "min": 0, "max": 120, "step": 1, "display": "强制帧率 (0=默认30帧)"})
             }
         }
 
@@ -30,7 +34,7 @@ class MXChatVideoSendNode:
     RETURN_NAMES = ("frames", "audio")
     FUNCTION = "execute"
     OUTPUT_NODE = True
-    CATEGORY = "Agentpark"
+    CATEGORY = "Agentpark/SendNode"
 
     def __init__(self):
         self.location_name = None
@@ -47,7 +51,7 @@ class MXChatVideoSendNode:
         else:
             logger.warning("[MXChatVideoSendNode] widgets 未定义，跳过初始化")
 
-    def execute(self, video_data, location_name="默认位置", text=""):
+    def execute(self, video_data, location_name="默认位置", text="", max_frames=0, skip_frames=0, skip_first_frames=0, force_fps=0):
         effective_location_name = self.location_name if self.location_name else location_name
         try:
             logger.info(f"[MXChatVideoSendNode] 开始处理视频数据，location_name: {effective_location_name}")
@@ -81,13 +85,46 @@ class MXChatVideoSendNode:
                     return (torch.zeros(1, 64, 64, 3), {"waveform": torch.zeros(1, 1, 1), "sample_rate": 44100})
                 
                 frames = []
+                frame_count = 0
+                frame_index = 0
+                
+                # 设置帧率
+                fps = 30.0  # 默认帧率
+                if force_fps > 0:
+                    fps = float(force_fps)
+                    logger.info(f"[MXChatVideoSendNode] 使用强制帧率: {fps} 帧/秒")
+                    
+                # 获取原始视频帧率
+                original_fps = cap.get(cv2.CAP_PROP_FPS)
+                logger.info(f"[MXChatVideoSendNode] 原始视频帧率: {original_fps} 帧/秒")
+                
                 while True:
                     ret, frame = cap.read()
                     if not ret:
                         break
+                        
+                    # 处理跳过前X帧的逻辑
+                    if skip_first_frames > 0 and frame_index < skip_first_frames:
+                        frame_index += 1
+                        continue
+                        
+                    # 处理每隔X帧取一帧的逻辑
+                    if skip_frames > 0:
+                        if frame_index % (skip_frames + 1) != 0:  # 每隔skip_frames帧取一帧
+                            frame_index += 1
+                            continue
+                    
                     frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     frame_tensor = torch.from_numpy(frame_rgb).float() / 255.0
                     frames.append(frame_tensor)
+                    
+                    frame_count += 1
+                    frame_index += 1
+                    
+                    # 处理帧数上限逻辑
+                    if max_frames > 0 and frame_count >= max_frames:
+                        logger.info(f"[MXChatVideoSendNode] 达到帧数上限 {max_frames}，停止提取")
+                        break
                 
                 cap.release()
                 
