@@ -194,19 +194,23 @@ export class MessageComponent extends MXChatComponent {
         if (typeof newData === 'object') {
             const reasoningContent = newData.reasoning_content || '';
             const content = newData.text || '';
-            const format = this.message.format || null;
-
+            const format = newData.format || this.message.format || null;
+    
+            // 更新 this.message
+            this.message.text = content;
+            if (newData.format) this.message.format = newData.format;
+    
             if (reasoningContent) {
                 if (!this.reasoningContainer) {
                     this.reasoningContainer = this.createElement('div', 'mx-chat-reasoning-container');
                     const toggleButton = this.createElement('button', 'mx-chat-reasoning-toggle');
                     toggleButton.textContent = this.isReasoningVisible ? '▼ 隐藏推理' : '▶ 展开推理';
                     toggleButton.onclick = () => this.toggleReasoning();
-
+    
                     this.reasoningText = this.createElement('div', 'mx-chat-reasoning-text');
                     this.reasoningText.textContent = reasoningContent;
                     this.reasoningText.style.display = this.isReasoningVisible ? 'block' : 'none';
-
+    
                     this.reasoningContainer.appendChild(toggleButton);
                     this.reasoningContainer.appendChild(this.reasoningText);
                     this.content.insertBefore(this.reasoningContainer, this.textElement);
@@ -214,9 +218,8 @@ export class MessageComponent extends MXChatComponent {
                     this.reasoningText.textContent = reasoningContent;
                 }
             }
-
+    
             if (this.textElement) {
-                this.message.text = content;
                 if (format === 'markdown' && window.marked) {
                     this.textElement.innerHTML = window.marked.parse(content);
                     if (window.Prism) Prism.highlightAll();

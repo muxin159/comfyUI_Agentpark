@@ -53,11 +53,14 @@ export class MXChatSidebar {
                 
                 // 处理消息类型
                 const messageHandlers = {
-                    'status': (d) => console.log(`[INFO] 队列状态:`, d.data.status),
-                    'executing': (d) => console.log(`[INFO] 当前执行节点:`, d.data.node),
                     'mx-chat-message': (d) => {
                         if (this.currentMode === 'agent' && d.data?.text && typeof this.addMessage === 'function') {
-                            this.addMessage(d.data.text, d.data.isUser || false, d.data.imageData || null, d.data.audioData || null, d.data.videoData || null);
+                            const message = {
+                                text: d.data.text,
+                                format: d.data.format || 'text',
+                                reasoning_content: d.data.reasoning_content || '' // 如果有 reasoning_content
+                            };
+                            this.addMessage(message, d.data.isUser || false, d.data.imageData || null, d.data.audioData || null, d.data.videoData || null);
                         }
                     },
                     'imageData_ack': (d) => {
@@ -83,10 +86,9 @@ export class MXChatSidebar {
     
                 const handler = messageHandlers[data.type || data.event];
                 if (handler) handler(data);
-                else console.log(`[WARN] 未识别的消息类型: ${data.type || data.event}`);
-            } catch (error) {
+             } catch (error) {
                 console.error(`[ERROR] 解析 WebSocket 消息失败:`, error);
-            }
+             }
         });
     
         this.ws.addEventListener('close', () => {
